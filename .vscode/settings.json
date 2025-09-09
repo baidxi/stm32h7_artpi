@@ -1,0 +1,22 @@
+{
+    "cmake.cmakePath": "cube-cmake",
+    "cmake.configureArgs": [
+        "-DCMAKE_COMMAND=cube-cmake"
+    ],
+    "cmake.preferredGenerators": [
+        "Ninja"
+    ],
+    "files.associations": {
+        "common.h": "c",
+        "tty.h": "c",
+        "format": "c",
+        "fstream": "c",
+        "hash_map": "c",
+        "algorithm": "c",
+        "list": "c",
+        "typeinfo": "c",
+        "device.h": "c",
+        "list.h": "c"
+    },
+    "cortex-debug.variableUseNaturalFormat": false
+}
