@@ -13,7 +13,6 @@ static struct list_head device_list = LIST_HEAD_INIT(device_list);
 int device_register(struct device *dev)
 {
     struct device *_dev = NULL;
-    struct bus_type *bus = dev->bus;
 
     if (!dev->init_name)
         return -EINVAL;
@@ -55,14 +54,14 @@ int device_probe(struct driver *drv)
 
 void __init device_init()
 {
-    volatile void *start = __board_device_list_start;
-    volatile void *end = __board_device_list_end;
-    int count = (end - start) / (sizeof(void *));
+    volatile struct device **start = __board_device_list_start;
+    volatile struct device **end = __board_device_list_end;
+    volatile int count = ((uint32_t)end - (uint32_t)start) / (sizeof(void *));
     int i;
     struct device *dev;
 
-    for (i = 0, dev = __board_device_list_start[i]; i < count; dev = __board_device_list_start[i++])
-    {
+    for (i = 0; i < count; i++) {
+        dev = start[i];
         dev->init(dev);
     }
 }
