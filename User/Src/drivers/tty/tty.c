@@ -3,8 +3,8 @@
 #include <bus.h>
 #include <init.h>
 #include <list.h>
-#include <string.h>
 
+#include <string.h>
 #include <errno.h>
 
 static struct list_head device_list = LIST_HEAD_INIT(device_list);
@@ -106,6 +106,19 @@ struct tty_device *tty_device_lookup_by_handle(void *handle)
         if (tty->dev.private_data == handle) {
             return tty;
         }
+    }
+
+    return NULL;
+}
+
+struct tty_device *tty_device_lookup_by_name(const char *name)
+{
+    struct tty_device *tty;
+
+    list_for_each_entry(tty, &device_list, list)
+    {
+        if (strcmp(tty->dev.name, name) == 0)
+            return tty;
     }
 
     return NULL;

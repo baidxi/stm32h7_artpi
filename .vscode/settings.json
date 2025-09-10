@@ -16,7 +16,9 @@
         "list": "c",
         "typeinfo": "c",
         "device.h": "c",
-        "list.h": "c"
+        "list.h": "c",
+        "chrono": "c",
+        "cstdint": "c"
     },
     "cortex-debug.variableUseNaturalFormat": false
 }

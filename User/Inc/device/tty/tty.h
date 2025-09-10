@@ -45,3 +45,4 @@ int tty_ioctl(struct tty_device *tty, unsigned int cmd, unsigned long arg);
 int tty_device_register(struct tty_device *tty);
 int tty_driver_register(struct tty_driver *tty_drv);
 struct tty_device *tty_device_lookup_by_handle(void *handle);
+struct tty_device *tty_device_lookup_by_name(const char *name);

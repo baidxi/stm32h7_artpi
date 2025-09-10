@@ -26,6 +26,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include <bus.h>
+#include <shell.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -57,6 +58,14 @@ const osThreadAttr_t defaultTask_attributes = {
 
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN FunctionPrototypes */
+osThreadId_t shellTaskHandle;
+const osThreadAttr_t shellTask_attrbutes = {
+  .name = "shellTask",
+  .stack_size = 512 * 4,
+  .priority = (osPriority_t)osPriorityNormal1,
+};
+
+void StartShellTask(void *argument);
 
 /* USER CODE END FunctionPrototypes */
 
@@ -95,6 +104,7 @@ void MX_FREERTOS_Init(void) {
   defaultTaskHandle = osThreadNew(StartDefaultTask, NULL, &defaultTask_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
+  shellTaskHandle = osThreadNew(StartShellTask, NULL, &shellTask_attrbutes);
   /* add threads, ... */
   /* USER CODE END RTOS_THREADS */
 
@@ -114,9 +124,6 @@ void MX_FREERTOS_Init(void) {
 void StartDefaultTask(void *argument)
 {
   /* USER CODE BEGIN StartDefaultTask */
-  extern int early_init(void);
-  bus_type_init();
-  early_init();
   /* Infinite loop */
   for(;;)
   {
@@ -127,6 +134,13 @@ void StartDefaultTask(void *argument)
 
 /* Private application code --------------------------------------------------*/
 /* USER CODE BEGIN Application */
-
+void StartShellTask(void *argument)
+{
+  shell_init("ttyS4", "stm32h7> ");
+  for (;;)
+  {
+    shell_run();
+  }
+}
 /* USER CODE END Application */
 

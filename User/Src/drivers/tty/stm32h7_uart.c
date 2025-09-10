@@ -15,7 +15,6 @@
 
 struct stm32h7_uart {
     struct tty_device device;
-    uint8_t port_num;
     uint8_t buf[1024];
     size_t buf_len;
     bool is_open;
@@ -48,6 +47,7 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
 static int stm32h7_uart_open(struct device *dev)
 {
     struct stm32h7_uart *uart = (struct stm32h7_uart *)to_tty_device(dev);
+    UART_HandleTypeDef *handle = uart->device.dev.private_data;
     struct ring *ring = &uart->ringbuf;
 
     xSemaphoreTake(uart->lock, portMAX_DELAY);
@@ -68,9 +68,9 @@ static int stm32h7_uart_open(struct device *dev)
 
     xSemaphoreGive(uart->lock);
 
-    __HAL_UART_ENABLE_IT((UART_HandleTypeDef *)uart->device.dev.private_data, UART_IT_IDLE);
+    __HAL_UART_ENABLE_IT(handle, UART_IT_IDLE);
 
-    return HAL_UARTEx_ReceiveToIdle_DMA(uart->device.dev.private_data, uart->buf, ring->mask);
+    return HAL_UARTEx_ReceiveToIdle_DMA(handle, uart->buf, ring->mask);
 }
 
 static int stm32h7_uart_close(struct device *dev)
@@ -88,7 +88,7 @@ static int stm32h7_uart_close(struct device *dev)
 
     xSemaphoreGive(uart->lock);
 
-    __HAL_UART_DISABLE_IT((UART_HandleTypeDef *)uart->device.dev.private_data, UART_IT_IDLE);
+    // __HAL_UART_DISABLE_IT((UART_HandleTypeDef *)uart->device.dev.private_data, UART_IT_IDLE);
 
     HAL_UART_AbortReceive((UART_HandleTypeDef *)uart->device.dev.private_data);
     HAL_UART_AbortTransmit((UART_HandleTypeDef *)uart->device.dev.private_data);
@@ -189,16 +189,13 @@ static const struct driver_match_table stm32h7_uart_ids[] = {
 
 #define to_stm32h7_uart(d)  container_of(d, struct stm32h7_uart, device)
 
-int stm32h7_uart_device_register(struct tty_device *tty, const char *name, uint8_t port_num)
+int stm32h7_uart_device_register(struct tty_device *tty)
 {
 
     struct stm32h7_uart *uart = to_stm32h7_uart(tty);
 
     if (!uart)
         return -ENOMEM;
-
-    sprintf(uart->device.dev.name, name);
-    uart->port_num = port_num;
 
     return tty_device_register(&uart->device);
 }
@@ -225,17 +222,21 @@ static struct stm32h7_uart stm32h7_usart3 = {
     .device = {
         .dev ={
             .init_name = "stm32h7-uart",
+            .name = "ttyS3",
             .init = stm32h7_usart3_init,
-        }
-    }
+        },
+        .port_num = 3,
+    },
 };
 
 static struct stm32h7_uart stm32h7_uart4 = {
     .device = {
         .dev = {
             .init_name = "stm32h7-uart",
+            .name = "ttyS4",
             .init = stm32h7_uart4_init,
-        }
+        },
+        .port_num = 4,
     }
 };
 

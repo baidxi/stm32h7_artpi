@@ -6,4 +6,4 @@
 
 struct tty_device;
 
-int stm32h7_uart_device_register(struct tty_device *tty, const char *name, uint8_t port_num);
+int stm32h7_uart_device_register(struct tty_device *tty);

@@ -133,6 +133,15 @@ SECTIONS
     . = ALIGN(4);
   } >FLASH
 
+  .shell_cmd_list :
+  {
+    . = ALIGN(4);
+    __shell_cmd_list_start = .;
+    KEEP(*(shell_cmd_list))
+    __shell_cmd_list_end = .;
+    . = ALIGN(4);
+  } >FLASH
+
   /* Constant data goes into FLASH */
   .rodata :
   {
