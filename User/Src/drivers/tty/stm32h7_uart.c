@@ -27,31 +27,9 @@ struct stm32h7_uart {
 
 const osThreadAttr_t uartTask_attrbutes = {
   .name = "uartTask",
-  .stack_size = 512 * 4,
+  .stack_size = 128 * 4,
   .priority = (osPriority_t)osPriorityNormal1,
 };
-
-void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
-{
-    struct stm32h7_uart *uart = (struct stm32h7_uart *)tty_device_lookup_by_handle(huart);
-    uint32_t head;
-    uint32_t remain;
-    uint32_t req_size = Size;
-    uint32_t offset;
-    
-    remain = ring_size(&uart->ringbuf);
-
-    if (req_size > remain) {
-        req_size = remain;
-    }
-
-    head = ring_enqueue(&uart->ringbuf, req_size);
-
-    offset = head & uart->ringbuf.mask;
-
-    if (!ring_is_full(&uart->ringbuf))
-        HAL_UARTEx_ReceiveToIdle_DMA(huart, &uart->buf[offset], uart->buf_len - offset);
-}
 
 static void uart_task(void *args)
 {
@@ -88,7 +66,6 @@ static int stm32h7_uart_open(struct device *dev)
         return -EBUSY;
     }
 
-
     uart->buf_len = sizeof(uart->buf);
 
     ring->head = 0;
@@ -118,12 +95,6 @@ static int stm32h7_uart_close(struct device *dev)
     uart->is_open = false;
 
     xSemaphoreGive(uart->lock);
-
-    // __HAL_UART_DISABLE_IT((UART_HandleTypeDef *)uart->device.dev.private_data, UART_IT_IDLE);
-
-    HAL_UART_AbortReceive((UART_HandleTypeDef *)uart->device.dev.private_data);
-    HAL_UART_AbortTransmit((UART_HandleTypeDef *)uart->device.dev.private_data);
-
     return 0;
 }
 
@@ -135,7 +106,6 @@ static int stm32h7_uart_ioctl(struct device *dev, unsigned int cmd, unsigned lon
 static size_t stm32h7_uart_read(struct device *dev, void *buf, size_t count)
 {
     struct stm32h7_uart *uart = (struct stm32h7_uart *)to_tty_device(dev);
-    // bool start_dma = false;
     int acquire = count;
     int offset;
 
@@ -143,8 +113,6 @@ static size_t stm32h7_uart_read(struct device *dev, void *buf, size_t count)
         return -ENXIO;
 
     xSemaphoreTake(uart->lock, portMAX_DELAY);
-
-    // start_dma = ring_is_full(&uart->ringbuf);
 
     if (ring_count(&uart->ringbuf) < count) 
         acquire = ring_count(&uart->ringbuf);
@@ -154,11 +122,6 @@ static size_t stm32h7_uart_read(struct device *dev, void *buf, size_t count)
 
         memcpy(buf, &uart->buf[offset], acquire);
     }
-
-    // if (start_dma) {
-    //     offset = uart->ringbuf.head & uart->ringbuf.mask;
-    //     HAL_UARTEx_ReceiveToIdle_DMA(uart->device.dev.private_data, &uart->buf[offset], count);
-    // }
 
     xSemaphoreGive(uart->lock);
 
