@@ -95,7 +95,7 @@ int shell_puts(const char *str)
 
 static void shell_putchar(char c)
 {
-    if (!ctx->tty && ctx->echo_enabled)
+    if (ctx->tty && ctx->echo_enabled)
         tty_write(ctx->tty, &c, 1);
 }
 
@@ -132,7 +132,7 @@ static int shell_getchar(void)
         return -1;
     }
 
-    return 1;
+    return c;
 }
 
 int parse_command(char *cmd_str, char *argv[], int max_args)
@@ -185,6 +185,7 @@ struct shell_command *find_command(const char *name)
         }
     }
     xSemaphoreGive(ctx->lock);
+    return NULL;
 }
 
 int execute_command(const char *cmd_str)
@@ -221,8 +222,7 @@ static void handle_enter(void)
 {
     int ret;
 
-    shell_putchar('\r');
-    shell_putchar('\n');
+    shell_puts("\r\n");
 
     if (ctx->buf_offset > 0) {
         ret = execute_command(ctx->buf);
@@ -240,6 +240,24 @@ static void handle_enter(void)
     print_prompt();
 }
 
+static void handle_char(char c)
+{
+    if (ctx->buf_offset < sizeof(ctx->buf) -1) {
+        ctx->buf[ctx->buf_offset++] = c;
+        ctx->buf[ctx->buf_offset] = '\0';
+        shell_putchar(c);
+    }
+}
+
+static void handle_backspace()
+{
+    if (ctx->buf_offset > 0) {
+        ctx->buf_offset--;
+        ctx->buf[ctx->buf_offset] = '\0';
+        shell_puts("\b \b");
+    }
+}
+
 static void handle_special(char c)
 {
     switch(c) {
@@ -249,12 +267,13 @@ static void handle_special(char c)
             break;
         case '\b':
         case 127:   /* DEL */
+            handle_backspace();
             break;
         case 27:    /* ESC序列开始 */
             break;
         default:
             if (isprint(c)) {
-
+                handle_char(c);
             }
             break;
 

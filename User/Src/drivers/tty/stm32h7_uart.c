@@ -7,6 +7,8 @@
 
 #include <FreeRTOS.h>
 #include <semphr.h>
+#include <task.h>
+#include <cmsis_os.h>
 
 #include <stdlib.h>
 #include <errno.h>
@@ -20,6 +22,13 @@ struct stm32h7_uart {
     bool is_open;
     struct ring ringbuf;
     xSemaphoreHandle lock;
+    osThreadId_t tid;
+};
+
+const osThreadAttr_t uartTask_attrbutes = {
+  .name = "uartTask",
+  .stack_size = 512 * 4,
+  .priority = (osPriority_t)osPriorityNormal1,
 };
 
 void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
@@ -44,10 +53,32 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
         HAL_UARTEx_ReceiveToIdle_DMA(huart, &uart->buf[offset], uart->buf_len - offset);
 }
 
+static void uart_task(void *args)
+{
+    struct stm32h7_uart *uart = args;
+    UART_HandleTypeDef *handle = uart->device.dev.private_data;
+    struct ring *r = &uart->ringbuf;
+    size_t count;
+    int ret;
+
+    while(uart->is_open) {
+        if (ring_size(r)) {
+            xSemaphoreTake(uart->lock, portMAX_DELAY);
+            ret = HAL_UART_Receive(handle, &uart->buf[(r->head & r->mask)], ring_size(r) , 10);
+            if (ret == HAL_OK || ret == HAL_TIMEOUT) {
+                count = ring_size(r) - handle->RxXferCount;
+                if (count)
+                    ring_enqueue(r, count);
+            }
+            xSemaphoreGive(uart->lock);
+        }
+        taskYIELD();
+    }
+}
+
 static int stm32h7_uart_open(struct device *dev)
 {
     struct stm32h7_uart *uart = (struct stm32h7_uart *)to_tty_device(dev);
-    UART_HandleTypeDef *handle = uart->device.dev.private_data;
     struct ring *ring = &uart->ringbuf;
 
     xSemaphoreTake(uart->lock, portMAX_DELAY);
@@ -68,9 +99,9 @@ static int stm32h7_uart_open(struct device *dev)
 
     xSemaphoreGive(uart->lock);
 
-    __HAL_UART_ENABLE_IT(handle, UART_IT_IDLE);
+    uart->tid = osThreadNew(uart_task, uart, &uartTask_attrbutes);
 
-    return HAL_UARTEx_ReceiveToIdle_DMA(handle, uart->buf, ring->mask);
+    return 0;
 }
 
 static int stm32h7_uart_close(struct device *dev)
@@ -104,7 +135,7 @@ static int stm32h7_uart_ioctl(struct device *dev, unsigned int cmd, unsigned lon
 static size_t stm32h7_uart_read(struct device *dev, void *buf, size_t count)
 {
     struct stm32h7_uart *uart = (struct stm32h7_uart *)to_tty_device(dev);
-    bool start_dma = false;
+    // bool start_dma = false;
     int acquire = count;
     int offset;
 
@@ -113,7 +144,7 @@ static size_t stm32h7_uart_read(struct device *dev, void *buf, size_t count)
 
     xSemaphoreTake(uart->lock, portMAX_DELAY);
 
-    start_dma = ring_is_full(&uart->ringbuf);
+    // start_dma = ring_is_full(&uart->ringbuf);
 
     if (ring_count(&uart->ringbuf) < count) 
         acquire = ring_count(&uart->ringbuf);
@@ -124,10 +155,10 @@ static size_t stm32h7_uart_read(struct device *dev, void *buf, size_t count)
         memcpy(buf, &uart->buf[offset], acquire);
     }
 
-    if (start_dma) {
-        offset = uart->ringbuf.head & uart->ringbuf.mask;
-        HAL_UARTEx_ReceiveToIdle_DMA(uart->device.dev.private_data, &uart->buf[offset], count);
-    }
+    // if (start_dma) {
+    //     offset = uart->ringbuf.head & uart->ringbuf.mask;
+    //     HAL_UARTEx_ReceiveToIdle_DMA(uart->device.dev.private_data, &uart->buf[offset], count);
+    // }
 
     xSemaphoreGive(uart->lock);
 
