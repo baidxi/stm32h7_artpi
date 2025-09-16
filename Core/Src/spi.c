@@ -324,37 +324,5 @@ void HAL_SPI_MspDeInit(SPI_HandleTypeDef* spiHandle)
 }
 
 /* USER CODE BEGIN 1 */
-static void stm32_uart_init(struct device *dev)
-{
-  struct spi_master *master = to_spi_master(dev);
-  switch(master->bus_num) {
-    case 1:
-      MX_SPI1_Init();
-      master->mode = hspi1.Init.Mode;
-      dev->private_data = &hspi1;
-      break;
-    case 2:
-      MX_SPI2_Init();
-      master->mode = hspi2.Init.Mode;
-      dev->private_data = &hspi2;
-      break;
-    case 4:
-      MX_SPI4_Init();
-      master->mode = hspi4.Init.Mode;
-      dev->private_data = &hspi4;
-      break;
-  }
-
-  if (master->mode == SPI_MODE_MASTER)
-    spi_master_register(master);
-}
-static struct spi_master stm32h7_spi1 = {
-  .dev = {
-    .init_name = "stm32-spi-controller",
-    .init = stm32_uart_init,
-  },
-  .bus_num = 1,
-};
-register_device(stm32h7_spi1, stm32h7_spi1.dev);
 
 /* USER CODE END 1 */

@@ -9,8 +9,11 @@
 #include <device/i2c/i2c.h>
 #include <device/i2c/gpio-i2c.h>
 #include <device/i2c/mpu6050.h>
+#include <device/gpio/stm32_gpio.h>
+#include <device/spi/spi.h>
 
 #include <gpio.h>
+#include <spi.h>
 
 void StartShellTask (void *argument)
 {
@@ -116,7 +119,121 @@ static struct mpu6050_device mpu6050 = {
   }
 };
 
-register_device(stm32_gpio_i2c, stm32_gpio_i2c.dev);
-register_device(mpu6050, mpu6050.dev.dev);
+static struct gpio_device stm32_gpioa_device = {
+    .dev = {
+        .init_name = "stm32-gpio",
+        .init = stm32_gpio_init,
+    },
+    .chip = &stm32_gpioa_chip.chip,
+};
+
+static struct gpio_device stm32_gpiob_device = {
+    .dev = {
+        .init_name = "stm32-gpio",
+        .init = stm32_gpio_init,
+    },
+    .chip = &stm32_gpiob_chip.chip,
+};
+
+static struct gpio_device stm32_gpioc_device = {
+    .dev = {
+        .init_name = "stm32-gpio",
+        .init = stm32_gpio_init,
+    },
+    .chip = &stm32_gpioc_chip.chip,
+};
+
+static struct gpio_device stm32_gpiod_device = {
+    .dev = {
+        .init_name = "stm32-gpio",
+        .init = stm32_gpio_init,
+    },
+    .chip = &stm32_gpiod_chip.chip,
+};
+
+static struct gpio_device stm32_gpioe_device = {
+    .dev = {
+        .init_name = "stm32-gpio",
+        .init = stm32_gpio_init,
+    },
+    .chip = &stm32_gpioe_chip.chip,
+};
+
+static struct gpio_device stm32_gpiof_device = {
+    .dev = {
+        .init_name = "stm32-gpio",
+        .init = stm32_gpio_init,
+    },
+    .chip = &stm32_gpiof_chip.chip,
+};
+
+static struct gpio_device stm32_gpioh_device = {
+    .dev = {
+        .init_name = "stm32-gpio",
+        .init = stm32_gpio_init,
+    },
+    .chip = &stm32_gpioh_chip.chip,
+};
+
+static struct gpio_device stm32_gpioi_device = {
+    .dev = {
+        .init_name = "stm32-gpio",
+        .init = stm32_gpio_init,
+    },
+    .chip = &stm32_gpioi_chip.chip,
+};
+
+static struct gpio_device stm32_gpioj_device = {
+    .dev = {
+        .init_name = "stm32-gpio",
+        .init = stm32_gpio_init,
+    },
+    .chip = &stm32_gpioj_chip.chip,
+};
+
+static void stm32_spi_init(struct device *dev)
+{
+  struct spi_master *master = to_spi_master(dev);
+  switch(master->bus_num) {
+    case 1:
+      MX_SPI1_Init();
+      master->mode = hspi1.Init.Mode;
+      dev->private_data = &hspi1;
+      break;
+    case 2:
+      MX_SPI2_Init();
+      master->mode = hspi2.Init.Mode;
+      dev->private_data = &hspi2;
+      break;
+    case 4:
+      MX_SPI4_Init();
+      master->mode = hspi4.Init.Mode;
+      dev->private_data = &hspi4;
+      break;
+  }
+
+  if (master->mode == SPI_MODE_MASTER)
+    spi_master_register(master);
+}
+static struct spi_master stm32h7_spi1 = {
+  .dev = {
+    .init_name = "stm32-spi-controller",
+    .init = stm32_spi_init,
+  },
+  .bus_num = 1,
+};
+
+register_device(gpioa, stm32_gpioa_device.dev);
+register_device(gpiob, stm32_gpiob_device.dev);
+register_device(gpioc, stm32_gpioc_device.dev);
+register_device(gpiod, stm32_gpiod_device.dev);
+register_device(gpioe, stm32_gpioe_device.dev);
+register_device(gpiof, stm32_gpiof_device.dev);
+register_device(gpioh, stm32_gpioh_device.dev);
+register_device(gpioi, stm32_gpioi_device.dev);
+register_device(gpioj, stm32_gpioj_device.dev);
 register_device(stm32h7_uart3, stm32h7_uart3.tty.dev);
 register_device(stm32h7_uart4, stm32h7_uart4.tty.dev);
+register_device(stm32_gpio_i2c, stm32_gpio_i2c.dev);
+register_device(mpu6050, mpu6050.dev.dev);
+register_device(stm32h7_spi1, stm32h7_spi1.dev);

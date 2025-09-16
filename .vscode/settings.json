@@ -21,7 +21,8 @@
         "cstdint": "c",
         "stm32_uart.h": "c",
         "spi.h": "c",
-        "bus.h": "c"
+        "bus.h": "c",
+        "gpio.h": "c"
     },
     "cortex-debug.variableUseNaturalFormat": false
 }

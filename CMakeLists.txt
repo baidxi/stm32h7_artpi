@@ -48,6 +48,8 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     User/Drivers/Src/drivers/base/bus.c
     User/Drivers/Src/drivers/base/device.c
     User/Drivers/Src/drivers/base/driver.c
+    User/Drivers/Src/drivers/gpio/gpio.c
+    User/Drivers/Src/drivers/gpio/stm32_gpio.c
     User/Drivers/Src/drivers/i2c/i2c.c
     User/Drivers/Src/drivers/i2c/stm32-gpio-i2c.c
     User/Drivers/Src/drivers/i2c/mpu6050.c
