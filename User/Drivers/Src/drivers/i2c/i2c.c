@@ -173,6 +173,37 @@ static int show_help()
 
 static int do_scan(int8_t dev_id)
 {
+    struct i2c_adapter *adap;
+    struct i2c_message msg = {0};
+    size_t len = 0;
+    char buf[128] = {0};
+    int i;
+
+    list_for_each_entry(adap, &adapter_list, list)
+    {
+        if (adap->nr == dev_id) {
+            goto found;
+        }
+    }
+    shell_puts("dev Not Set\r\n");
+    return -1;
+found:
+    for (i = 0; i < 128; i++) {
+        msg.addr = i;
+        if (adap->algo->master_xfer(adap, &msg, 1) == 0) {
+            len += snprintf(buf + len, sizeof(buf) - len, "%02x", msg.addr);
+        } else {
+            len += snprintf(buf + len, sizeof(buf) - len, "--");
+        }
+
+        if ((i + 1) % 16 != 0)
+            len += snprintf(buf + len, sizeof(buf) - len, " ");
+        else {
+            snprintf(buf + len, sizeof(buf) - len, "\r\n");
+            shell_puts(buf);
+            len = 0;
+        }
+    }
     return 0;
 }
 

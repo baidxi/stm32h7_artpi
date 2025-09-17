@@ -212,7 +212,7 @@ static uint8_t i2c_read_byte(struct gpio_i2c_data *data, int ack)
 
 static int gpio_i2c_master_xfer(struct i2c_adapter *adap, struct i2c_message *msgs, int num)
 {
-    struct gpio_i2c_data *data = (struct gpio_i2c_data *)adap->algo_data;
+    struct gpio_i2c_data *data = dev_get_drvdata(&adap->dev);
     int i, ret;
     int retries = data->retries;
     
@@ -458,7 +458,7 @@ static void gpio_i2c_gpio_init(struct gpio_i2c_data *data)
 }
 
 
-static const struct i2c_algorithm gpio_i2c_gpio_algo = {
+static const struct i2c_algorithm gpio_i2c_algo = {
     .master_xfer = gpio_i2c_master_xfer,
     .smbus_xfer = gpio_i2c_smbus_xfer,
     .functionality = gpio_i2c_functionality,
@@ -471,7 +471,7 @@ static int gpio_i2c_adapter_probe(struct device *dev)
 
     gpio_i2c_gpio_init(data);
 
-    adap->algo = &gpio_i2c_gpio_algo;
+    adap->algo = &gpio_i2c_algo;
 
     if (!data->sda || !data->scl)
         return -1;
