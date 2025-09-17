@@ -2,6 +2,8 @@
 #include <device/gpio/gpio.h>
 #include <device/driver.h>
 #include <list.h>
+
+#include <stdio.h>
 #include <string.h>
 #include <errno.h>
 #include <stdlib.h>
@@ -10,6 +12,27 @@
 static struct list_head gpio_device_list = LIST_HEAD_INIT(gpio_device_list);
 static struct list_head gpio_chip_list = LIST_HEAD_INIT(gpio_chip_list);
 static int gpio_device_id = 0;
+
+struct gpio_desc *gpiod_lookup_byname(const char *name, unsigned short flags)
+{
+    struct gpio_device *dev;
+    uint8_t pin;
+
+    list_for_each_entry(dev, &gpio_device_list, list)
+    {
+        if (strncmp(dev->chip->label, name, 2) == 0) {
+            name = name + 2;
+            pin = strtoul(name, NULL, 0);
+            if (pin > dev->ngpio)
+                return NULL;
+            if (flags) {
+                gpiod_set_config(&dev->descs[pin], flags);
+            }
+            return &dev->descs[pin];
+        }
+    }
+    return NULL;
+}
 
 int desc_to_gpio(const struct gpio_desc *desc)
 {
@@ -125,8 +148,7 @@ int gpio_device_register(struct gpio_device *gdev)
         gdev->descs[i].gdev = gdev;
         gdev->descs[i].flags = GPIOF_IN;
         gdev->descs[i].irq = -1;
-        if (gdev->chip->names && gdev->chip->names[i])
-            gdev->descs[i].name = gdev->chip->names[i];
+        snprintf(gdev->descs[i].name, sizeof(gdev->descs[i].name), "%s%d", gdev->chip->label, i & 0xf);
     }
     
     gdev->id = gpio_device_id++;
@@ -207,6 +229,41 @@ struct gpio_desc *gpiochip_request_own_desc(struct gpio_chip *gc, unsigned int o
     
     desc->label = label;
     
+    return desc;
+}
+
+struct gpio_desc *gpiod_request_with_label(const char *name, unsigned long flags, const char *label)
+{
+    struct gpio_device *dev;
+    struct gpio_desc *desc;
+    uint8_t pin;
+    int ret;
+
+    list_for_each_entry(dev, &gpio_device_list, list)
+    {
+        if (strncmp(dev->chip->label, name, 2) == 0) {
+            name = name + 2;
+            pin = strtoul(name, NULL, 0);
+            if (pin > dev->ngpio)
+                return NULL;
+
+            desc = &dev->descs[pin];
+            goto found;
+        }
+    }
+    return NULL;
+found:
+    if (dev->chip->request) {
+        ret = dev->chip->request(dev->chip, pin);
+        if (ret)
+            return NULL;
+    }
+
+    desc->label = label;
+
+    if (flags)
+        gpiod_set_config(desc, flags);
+
     return desc;
 }
 
@@ -619,10 +676,10 @@ static struct option gpio_options[] = {
 
 const char *gpio_help_str[] = {
     "list all gpio devices",
-    "show gpio info <gpio_num>",
-    "read gpio value <gpio_num>",
-    "write gpio value <gpio_num> <value>",
-    "set gpio direction <gpio_num> <in|out>",
+    "show gpio info <name>",
+    "read gpio value <name>",
+    "write gpio value <name> <value>",
+    "set gpio direction <name> <in|out>",
     "show this help message"
 };
 
@@ -675,20 +732,19 @@ static int do_gpio_list(void)
     return 0;
 }
 
-static int do_gpio_info(int gpio_num)
+static int do_gpio_info(const char *name)
 {
     struct gpio_desc *desc;
     int direction, value;
     
-    desc = gpio_to_desc(gpio_num);
+    desc = gpiod_lookup_byname(name, 0);
     if (!desc) {
-        shell_printf("GPIO %d not found\r\n", gpio_num);
+        shell_printf("Invalid GPIO name %s\r\n", name);
         return -EINVAL;
     }
     
-    shell_printf("GPIO %d Info:\r\n", gpio_num);
     shell_printf("------------\r\n");
-    shell_printf("Name: %s\r\n", desc->name ? desc->name : "unknown");
+    shell_printf("Name: %s\r\n", desc->name);
     shell_printf("Label: %s\r\n", desc->label ? desc->label : "none");
     
     direction = gpiod_get_direction(desc);
@@ -710,38 +766,38 @@ static int do_gpio_info(int gpio_num)
     return 0;
 }
 
-static int do_gpio_read(int gpio_num)
+static int do_gpio_read(const char *name)
 {
     struct gpio_desc *desc;
     int value;
     
-    desc = gpio_to_desc(gpio_num);
+    desc = gpiod_lookup_byname(name, 0);
     if (!desc) {
-        shell_printf("GPIO %d not found\r\n", gpio_num);
+        shell_printf("Invalid GPIO name %s\r\n", name);
         return -EINVAL;
     }
-    
+
     value = gpiod_get_value(desc);
     if (value < 0) {
-        shell_printf("Failed to read GPIO %d\r\n", gpio_num);
+        shell_printf("Failed to read %s\r\n", name);
         return value;
     }
     
-    shell_printf("GPIO %d: ", gpio_num);
+    shell_printf("%s: ", name);
     gpio_print_value(value);
     shell_printf("\r\n");
     
     return 0;
 }
 
-static int do_gpio_write(int gpio_num, const char *value_str)
+static int do_gpio_write(const char *name, const char *value_str)
 {
     struct gpio_desc *desc;
     int value;
     
-    desc = gpio_to_desc(gpio_num);
+    desc = gpiod_lookup_byname(name, 0);
     if (!desc) {
-        shell_printf("GPIO %d not found\r\n", gpio_num);
+        shell_printf("Invalid GPIO name %s\r\n", name);
         return -EINVAL;
     }
     
@@ -753,21 +809,20 @@ static int do_gpio_write(int gpio_num, const char *value_str)
     
     gpiod_set_value(desc, value);
     
-    shell_printf("GPIO %d set to ", gpio_num);
+    shell_printf("%s set to ", name);
     gpio_print_value(value);
     shell_printf("\r\n");
     
     return 0;
 }
 
-static int do_gpio_dir(int gpio_num, const char *dir_str)
+static int do_gpio_dir(const char *name, const char *dir_str)
 {
-    struct gpio_desc *desc;
+    struct gpio_desc *desc = gpiod_lookup_byname(name, 0);
     int ret;
-    
-    desc = gpio_to_desc(gpio_num);
+
     if (!desc) {
-        shell_printf("GPIO %d not found\r\n", gpio_num);
+        shell_printf("Invalid GPIO name %s\r\n", name);
         return -EINVAL;
     }
     
@@ -781,11 +836,11 @@ static int do_gpio_dir(int gpio_num, const char *dir_str)
     }
     
     if (ret < 0) {
-        shell_printf("Failed to set GPIO %d direction\r\n", gpio_num);
+        shell_printf("Failed to set %s direction\r\n", desc->name);
         return ret;
     }
     
-    shell_printf("GPIO %d direction set to %s\r\n", gpio_num, dir_str);
+    shell_printf("%s direction set to %s\r\n", desc->name, dir_str);
     
     return 0;
 }
@@ -812,6 +867,8 @@ static int do_gpio(int argc, char *argv[])
     if (argc < 2) {
         return show_help();
     }
+    extern void getopt_reset();
+    getopt_reset();
     
     while ((c = getopt_long(argc, argv, "li:r:w:d:h", gpio_options, &opt_ind)) != -1) {
         switch (c) {
@@ -819,33 +876,28 @@ static int do_gpio(int argc, char *argv[])
                 return do_gpio_list();
                 
             case 'i':
-                if (optind >= argc) {
-                    shell_printf("Missing GPIO number\r\n");
-                    return -EINVAL;
-                }
-                return do_gpio_info(atoi(optarg));
+                return do_gpio_info(optarg);
                 
             case 'r':
                 if (optind >= argc) {
                     shell_printf("Missing GPIO number\r\n");
                     return -EINVAL;
                 }
-                return do_gpio_read(atoi(optarg));
+                return do_gpio_read(optarg);
                 
             case 'w':
                 if (optind >= argc) {
                     shell_printf("Missing GPIO number or value\r\n");
                     return -EINVAL;
                 }
-                return do_gpio_write(atoi(optarg), argv[optind]);
+                return do_gpio_write(optarg, argv[optind]);
                 
             case 'd':
                 if (optind >= argc) {
                     shell_printf("Missing GPIO number or direction\r\n");
                     return -EINVAL;
                 }
-                return do_gpio_dir(atoi(optarg), argv[optind]);
-                
+                return do_gpio_dir(optarg, argv[optind]);
             case 'h':
                 return show_help();
                 
@@ -854,29 +906,27 @@ static int do_gpio(int argc, char *argv[])
                     case 0: /* list */
                         return do_gpio_list();
                     case 1: /* info */
-                        if (optind >= argc) {
-                            shell_printf("Missing GPIO number\r\n");
-                            return -EINVAL;
-                        }
-                        return do_gpio_info(atoi(optarg));
+                        return do_gpio_info(optarg);
                     case 2: /* read */
                         if (optind >= argc) {
                             shell_printf("Missing GPIO number\r\n");
                             return -EINVAL;
                         }
-                        return do_gpio_read(atoi(optarg));
+                        return do_gpio_read(optarg);
                     case 3: /* write */
                         if (optind >= argc) {
                             shell_printf("Missing GPIO number or value\r\n");
                             return -EINVAL;
                         }
-                        return do_gpio_write(atoi(optarg), argv[optind]);
+                        return do_gpio_write(optarg, argv[optind]);
                     case 4: /* dir */
+
                         if (optind >= argc) {
                             shell_printf("Missing GPIO number or direction\r\n");
                             return -EINVAL;
                         }
-                        return do_gpio_dir(atoi(optarg), argv[optind]);
+
+                        return do_gpio_dir(optarg, argv[optind]);
                     case 5: /* help */
                         return show_help();
                 }

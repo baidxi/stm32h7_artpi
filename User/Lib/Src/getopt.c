@@ -485,6 +485,12 @@ getopt_long (int argc, char *const argv[], const char *shortopts,
   return r;
 }
 
+void getopt_reset()
+{
+  struct getopt_data data = {0};
+  write_globals(&data);
+}
+
 int
 getopt_long_only (int argc, char *const argv[], const char *shortopts,
 		  const struct option *longopts, int *longind)

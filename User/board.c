@@ -56,13 +56,16 @@ void stm32h7_uart4_init (struct device *dev)
   tty_device_register (tty);
 }
 
-static void stm32_gpio_i2c_preinit(struct device *dev)
+static void gpio_i2c_preinit(struct device *dev)
 {
-    struct i2c_adapter *adap = to_i2c_adapter(dev);
+  struct i2c_adapter *adap = to_i2c_adapter(dev);
+
     static struct gpio_i2c_data data = {
-        .port = GPIOH,
-        .sda_pin = GPIO_PIN_12,
-        .scl_pin = GPIO_PIN_11,
+      .scl_pin_name = "PH11",
+      .sda_pin_name = "PH12",
+      .delay_us = 3,
+      .retries = 3,
+      .timeout = 3,
     };
 
     dev_set_drvdata(dev, &data);
@@ -102,8 +105,8 @@ static struct stm32_uart stm32h7_uart4 = {
 
 static struct i2c_adapter stm32_gpio_i2c = {
     .dev = {
-        .init_name = "stm32-gpio-i2c",
-        .init = stm32_gpio_i2c_preinit,
+        .init_name = "gpio-i2c",
+        .init = gpio_i2c_preinit,
     }
 };
 

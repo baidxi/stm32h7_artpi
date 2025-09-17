@@ -118,7 +118,7 @@ struct gpio_desc {
     struct gpio_device *gdev;
     unsigned long flags;
     const char *label;
-    const char *name;
+    char name[5];
     unsigned int irq;
     void *data;
 };
@@ -133,6 +133,8 @@ struct gpio_consumer {
 /* 工具函数 */
 int desc_to_gpio(const struct gpio_desc *desc);
 struct gpio_chip *gpiod_to_chip(const struct gpio_desc *desc);
+struct gpio_desc *gpiod_lookup_byname(const char *name, unsigned short flags);
+struct gpio_desc *gpiod_request_with_label(const char *name, unsigned long flags, const char *label);
 
 /* GPIO设备管理函数 */
 int gpio_device_register(struct gpio_device *gdev);

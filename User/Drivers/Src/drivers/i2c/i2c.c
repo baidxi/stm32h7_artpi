@@ -145,6 +145,7 @@ int i2c_register_device(struct i2c_client *client)
 static struct option i2c_options[] = {
     {"scan", no_argument, 0, 0},
     {"dev", required_argument, 0, 0},
+    {"list", no_argument, 0, 'l'},
     {"read", required_argument, 0, 'r'},
     {"write", required_argument, 0, 'w'},
     {0, 0, 0, 0}
@@ -153,6 +154,7 @@ static struct option i2c_options[] = {
 const char *help_str[] = {
     "scan device",
     "set adapter",
+    "list adapter",
     "addr reg count",
     "addr reg value len"
 };
@@ -174,6 +176,15 @@ static int do_scan(int8_t dev_id)
     return 0;
 }
 
+static void do_list_adapter()
+{
+    struct i2c_adapter *adap;
+    list_for_each_entry(adap, &adapter_list, list)
+    {
+        shell_printf("%s - driver %s\r\n", adap->dev.init_name, adap->dev.driver ? adap->dev.driver->name : "none");
+    }
+}
+
 static int do_i2c(int argc, char *argv[])
 {
     int c;
@@ -184,7 +195,11 @@ static int do_i2c(int argc, char *argv[])
         return show_help();
     }
 
-    while((c = getopt_long(argc, argv, "r:w:", i2c_options, &opt_ind)) != -1) {
+    extern void getopt_reset();
+
+    getopt_reset();
+
+    while((c = getopt_long(argc, argv, "lr:w:", i2c_options, &opt_ind)) != -1) {
         switch(c) {
             case 0:
                 switch(opt_ind) {
@@ -212,6 +227,9 @@ static int do_i2c(int argc, char *argv[])
             case 'r':
                 break;
             case 'w':
+                break;
+            case 'l':
+                do_list_adapter();
                 break;
             default:
                 break;

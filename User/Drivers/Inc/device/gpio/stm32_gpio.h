@@ -6,6 +6,7 @@
 struct stm32_gpio_chip {
     struct gpio_chip chip;
     GPIO_TypeDef *port;
+    uint16_t mask;
 };
 
 

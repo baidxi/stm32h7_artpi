@@ -195,10 +195,10 @@ static int stm32_gpio_request(struct gpio_chip *gc, unsigned int offset)
         return -EINVAL;
     }
     
-    /* 检查GPIO是否已经被请求 */
-    if (port->MODER & (3U << (2 * offset))) {
+    if (chip->mask & offset)
         return -EBUSY;
-    }
+
+    chip->mask |= (1 << offset);
     
     return 0;
 }
@@ -211,6 +211,8 @@ static void stm32_gpio_free(struct gpio_chip *gc, unsigned int offset)
     if (offset >= gc->ngpio) {
         return;
     }
+
+    chip->mask &= ~(1 << offset);
     
     /* 将GPIO设置为模拟模式，相当于释放 */
     port->MODER &= ~(3U << (2 * offset));
@@ -473,6 +475,9 @@ void stm32_gpio_init(struct device *dev)
 {
     struct gpio_device *_dev = container_of(dev, struct gpio_device, dev);
     struct gpio_chip *chip = _dev->chip;
+    struct stm32_gpio_chip *stm32 = (struct stm32_gpio_chip *)chip;
+
+    stm32->mask = 0;
 
     _dev->ngpio = chip->ngpio;
     _dev->base = chip->base;

@@ -1,5 +1,6 @@
 #include <device/i2c/i2c.h>
 #include <device/i2c/gpio-i2c.h>
+#include <device/gpio/gpio.h>
 
 #include <gpio.h>
 
@@ -18,32 +19,32 @@ static void delay_us(uint32_t us)
 
 static void scl_high(struct gpio_i2c_data *data)
 {
-    HAL_GPIO_WritePin((GPIO_TypeDef *)data->port, data->scl_pin, GPIO_PIN_SET);
+    gpiod_direction_output(data->scl, 1);
 }
 
 static void scl_low(struct gpio_i2c_data *data)
 {
-    HAL_GPIO_WritePin((GPIO_TypeDef *)data->port, data->scl_pin, GPIO_PIN_RESET);
+     gpiod_direction_output(data->scl, 0);
 }
 
 static void sda_high(struct gpio_i2c_data *data)
 {
-    HAL_GPIO_WritePin((GPIO_TypeDef *)data->port, data->sda_pin, GPIO_PIN_SET);
+     gpiod_direction_output(data->sda, 1);
 }
 
 static void sda_low(struct gpio_i2c_data *data)
 {
-    HAL_GPIO_WritePin((GPIO_TypeDef *)data->port, data->sda_pin, GPIO_PIN_RESET);
+     gpiod_direction_output(data->scl, 0);
 }
 
 static int sda_read(struct gpio_i2c_data *data)
 {
-    return HAL_GPIO_ReadPin((GPIO_TypeDef *)data->port, data->sda_pin) == GPIO_PIN_SET;
+    return gpiod_direction_input(data->sda);
 }
 
 static int scl_read(struct gpio_i2c_data *data)
 {
-    return HAL_GPIO_ReadPin((GPIO_TypeDef *)data->port, data->scl_pin) == GPIO_PIN_SET;
+    return gpiod_direction_input(data->scl);
 }
 
 static void i2c_start(struct gpio_i2c_data *data)
@@ -209,7 +210,7 @@ static uint8_t i2c_read_byte(struct gpio_i2c_data *data, int ack)
     return byte;
 }
 
-static int stm32_master_xfer(struct i2c_adapter *adap, struct i2c_message *msgs, int num)
+static int gpio_i2c_master_xfer(struct i2c_adapter *adap, struct i2c_message *msgs, int num)
 {
     struct gpio_i2c_data *data = (struct gpio_i2c_data *)adap->algo_data;
     int i, ret;
@@ -265,7 +266,7 @@ retry:
     return num;
 }
 
-static int stm32_smbus_xfer(struct i2c_adapter *adap, unsigned short addr,
+static int gpio_i2c_smbus_xfer(struct i2c_adapter *adap, unsigned short addr,
                      unsigned short flags, char read_write,
                      unsigned char command, int size, void *data)
 {
@@ -421,30 +422,28 @@ static int stm32_smbus_xfer(struct i2c_adapter *adap, unsigned short addr,
     return 0;
 }
 
-static unsigned int stm32_functionality(struct i2c_adapter *adap)
+static unsigned int gpio_i2c_functionality(struct i2c_adapter *adap)
 {
     return I2C_FUNC_I2C | I2C_FUNC_PROTOCOL_MANGLING;
 }
 
-static void stm32_gpio_init(struct gpio_i2c_data *data)
+static void gpio_i2c_gpio_init(struct gpio_i2c_data *data)
 {
-    GPIO_InitTypeDef GPIO_InitStruct = {0};
-    
-    if (!data || !data->port) {
+    struct gpio_desc *desc;
+    unsigned long flags = GPIO_CFG_DRIVE_OPEN_DRAIN |  GPIO_CFG_PULL_UP | GPIO_CFG_SPEED_HIGH;
+
+    desc = gpiod_request_with_label(data->scl_pin_name, flags, "i2c-scl");
+
+    if (!desc)
         return;
-    }
-    
-    GPIO_InitStruct.Pin = data->scl_pin;
-    GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_OD;
-    GPIO_InitStruct.Pull = GPIO_PULLUP;
-    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
-    HAL_GPIO_Init((GPIO_TypeDef *)data->port, &GPIO_InitStruct);
-    
-    GPIO_InitStruct.Pin = data->sda_pin;
-    GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_OD;
-    GPIO_InitStruct.Pull = GPIO_PULLUP;
-    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
-    HAL_GPIO_Init((GPIO_TypeDef *)data->port, &GPIO_InitStruct);
+
+    data->scl = desc;
+
+    desc = gpiod_request_with_label(data->sda_pin_name, flags, "i2c-sda");
+    if (!desc)
+        return;
+
+    data->sda = desc;
     
     scl_high(data);
     sda_high(data);
@@ -459,25 +458,28 @@ static void stm32_gpio_init(struct gpio_i2c_data *data)
 }
 
 
-static const struct i2c_algorithm stm32_gpio_algo = {
-    .master_xfer = stm32_master_xfer,
-    .smbus_xfer = stm32_smbus_xfer,
-    .functionality = stm32_functionality,
+static const struct i2c_algorithm gpio_i2c_gpio_algo = {
+    .master_xfer = gpio_i2c_master_xfer,
+    .smbus_xfer = gpio_i2c_smbus_xfer,
+    .functionality = gpio_i2c_functionality,
 };
 
-static int stm32_gpio_adapter_probe(struct device *dev)
+static int gpio_i2c_adapter_probe(struct device *dev)
 {
     struct i2c_adapter *adap = to_i2c_adapter(dev);
     struct gpio_i2c_data *data = dev_get_drvdata(dev);
 
-    stm32_gpio_init(data);
+    gpio_i2c_gpio_init(data);
 
-    adap->algo = &stm32_gpio_algo;
+    adap->algo = &gpio_i2c_gpio_algo;
+
+    if (!data->sda || !data->scl)
+        return -1;
     
-    return i2c_add_addapter(adap);
+    return 0;
 }
 
-static int stm32_gpio_adapter_remove(struct device *dev)
+static int gpio_i2c_adapter_remove(struct device *dev)
 {
     struct i2c_adapter *adap = to_i2c_adapter(dev);
 
@@ -486,27 +488,27 @@ static int stm32_gpio_adapter_remove(struct device *dev)
     return 0;
 }
 
-static void stm32_gpio_adapter_init(struct device_driver *drv)
+static void gpio_i2c_adapter_init(struct device_driver *drv)
 {
     driver_register(drv);
 }
 
-static const struct device_match_table stm32_gpio_i2c_ids[] = {
+static const struct device_match_table gpio_i2c_ids[] = {
     {
-        .compatible = "stm32-gpio-i2c"
+        .compatible = "gpio-i2c"
     },
     {
        
     }
 };
 
-static struct device_driver stm32_gpio_i2c_drv = {
-    .name = "stm32-gpio-i2c",
-    .init = stm32_gpio_adapter_init,
+static struct device_driver gpio_i2c_gpio_i2c_drv = {
+    .name = "gpio-i2c-drv",
+    .init = gpio_i2c_adapter_init,
     .bus = &i2c_bus_type,
-    .match_ptr = stm32_gpio_i2c_ids,
-    .probe = stm32_gpio_adapter_probe,
-    .remove = stm32_gpio_adapter_remove,
+    .match_ptr = gpio_i2c_ids,
+    .probe = gpio_i2c_adapter_probe,
+    .remove = gpio_i2c_adapter_remove,
 };
 
-register_driver(stm32_gpio_i2c, stm32_gpio_i2c_drv);
+register_driver(gpio_i2c_gpio_i2c, gpio_i2c_gpio_i2c_drv);
