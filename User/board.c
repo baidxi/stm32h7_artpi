@@ -105,7 +105,7 @@ static struct stm32_uart stm32h7_uart4 = {
 
 static struct i2c_adapter stm32_gpio_i2c = {
     .dev = {
-        .init_name = "gpio-i2c",
+        .init_name = "gpio-i2c-adapter",
         .init = gpio_i2c_preinit,
     }
 };

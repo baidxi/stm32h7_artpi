@@ -181,7 +181,7 @@ static void do_list_adapter()
     struct i2c_adapter *adap;
     list_for_each_entry(adap, &adapter_list, list)
     {
-        shell_printf("%s - driver %s\r\n", adap->dev.init_name, adap->dev.driver ? adap->dev.driver->name : "none");
+        shell_printf("%d - %s - driver %s\r\n",adap->nr, adap->dev.init_name, adap->dev.driver ? adap->dev.driver->name : "none");
     }
 }
 

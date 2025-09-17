@@ -495,7 +495,7 @@ static void gpio_i2c_adapter_init(struct device_driver *drv)
 
 static const struct device_match_table gpio_i2c_ids[] = {
     {
-        .compatible = "gpio-i2c"
+        .compatible = "gpio-i2c-adapter"
     },
     {
        
