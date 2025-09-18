@@ -313,27 +313,69 @@ static int stm32_gpio_set_config(struct gpio_chip *gc, unsigned int offset, unsi
 {
     struct stm32_gpio_chip *chip = container_of(gc, struct stm32_gpio_chip, chip);
     GPIO_TypeDef *port = chip->port;
+    GPIO_InitTypeDef GPIO_InitStruct = {0};
     uint32_t speed, pull, drive;
-    
-    if (offset >= gc->ngpio) {
+    uint32_t mode;
+
+    if (offset >= gc->ngpio)
         return -EINVAL;
+
+    mode = (port->MODER >> (2 * offset)) & 3;
+    
+    GPIO_InitStruct.Pin = (1U << offset);
+    
+    speed = (config & GPIO_CFG_SPEED_MASK) >> GPIO_CFG_SPEED_SHIFT;
+    switch (speed) {
+        case GPIO_CFG_SPEED_LOW:
+            GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+            break;
+        case GPIO_CFG_SPEED_MEDIUM:
+            GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_MEDIUM;
+            break;
+        case GPIO_CFG_SPEED_HIGH:
+            GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+            break;
+        default:
+            GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_MEDIUM;
+            break;
     }
     
-    /* 设置速度 */
-    speed = (config & GPIO_CFG_SPEED_MASK) >> GPIO_CFG_SPEED_SHIFT;
-    port->OSPEEDR = (port->OSPEEDR & ~(3U << (2 * offset))) | (speed << (2 * offset));
-    
-    /* 设置上拉/下拉 */
     pull = (config & GPIO_CFG_PULL_MASK) >> GPIO_CFG_PULL_SHIFT;
-    port->PUPDR = (port->PUPDR & ~(3U << (2 * offset))) | (pull << (2 * offset));
+    switch (pull) {
+        case GPIO_CFG_PULL_NONE:
+            GPIO_InitStruct.Pull = GPIO_NOPULL;
+            break;
+        case GPIO_CFG_PULL_UP:
+            GPIO_InitStruct.Pull = GPIO_PULLUP;
+            break;
+        case GPIO_CFG_PULL_DOWN:
+            GPIO_InitStruct.Pull = GPIO_PULLDOWN;
+            break;
+        default:
+            GPIO_InitStruct.Pull = GPIO_NOPULL;
+            break;
+    }
     
-    /* 设置输出类型 */
     drive = (config & GPIO_CFG_DRIVE_MASK) >> GPIO_CFG_DRIVE_SHIFT;
     if (drive == GPIO_CFG_DRIVE_OPEN_DRAIN) {
-        port->OTYPER |= (1U << offset);
+        if (mode == 0) {
+            GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+        } else if (mode == 1) {
+            GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_OD;
+        } else {
+            GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+        }
     } else {
-        port->OTYPER &= ~(1U << offset);
+        if (mode == 0) {
+            GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+        } else if (mode == 1) {
+            GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+        } else {
+            GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+        }
     }
+    
+    HAL_GPIO_Init(port, &GPIO_InitStruct);
     
     return 0;
 }
