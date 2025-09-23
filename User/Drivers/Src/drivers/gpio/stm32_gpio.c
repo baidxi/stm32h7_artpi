@@ -189,7 +189,7 @@ struct stm32_gpio_chip stm32_gpioj_chip = {
 static int stm32_gpio_request(struct gpio_chip *gc, unsigned int offset)
 {
     struct stm32_gpio_chip *chip = container_of(gc, struct stm32_gpio_chip, chip);
-    GPIO_TypeDef *port = chip->port;
+    // GPIO_TypeDef *port = chip->port;
     
     if (offset >= gc->ngpio) {
         return -EINVAL;
@@ -251,10 +251,7 @@ static int stm32_gpio_direction_input(struct gpio_chip *gc, unsigned int offset)
         return -EINVAL;
     }
     
-    /* 设置为输入模式 */
-    port->MODER = (port->MODER & ~(3U << (2 * offset))) | (0U << (2 * offset));
-    
-    return 0;
+    HAL_GPIO_ReadPin(port, 1 << offset);
 }
 
 static int stm32_gpio_direction_output(struct gpio_chip *gc, unsigned int offset, int value)
@@ -288,8 +285,7 @@ static int stm32_gpio_get(struct gpio_chip *gc, unsigned int offset)
         return -EINVAL;
     }
     
-    /* 读取输入数据寄存器 */
-    return (port->IDR >> offset) & 1;
+    return HAL_GPIO_ReadPin(port, 1 << offset);
 }
 
 static void stm32_gpio_set(struct gpio_chip *gc, unsigned int offset, int value)
@@ -300,13 +296,7 @@ static void stm32_gpio_set(struct gpio_chip *gc, unsigned int offset, int value)
     if (offset >= gc->ngpio) {
         return;
     }
-    
-    /* 设置输出值 */
-    if (value) {
-        port->BSRR = (1U << offset);
-    } else {
-        port->BSRR = (1U << (offset + 16));
-    }
+    HAL_GPIO_WritePin(port, 1 << offset, value);
 }
 
 static int stm32_gpio_set_config(struct gpio_chip *gc, unsigned int offset, unsigned long config)
@@ -320,11 +310,11 @@ static int stm32_gpio_set_config(struct gpio_chip *gc, unsigned int offset, unsi
     if (offset >= gc->ngpio)
         return -EINVAL;
 
-    mode = (port->MODER >> (2 * offset)) & 3;
+    mode = (config & (GPIO_CFG_MODE_MASK << GPIO_CFG_MODE_SHIFT));
     
     GPIO_InitStruct.Pin = (1U << offset);
     
-    speed = (config & GPIO_CFG_SPEED_MASK) >> GPIO_CFG_SPEED_SHIFT;
+    speed = (config & (GPIO_CFG_SPEED_MASK << GPIO_CFG_SPEED_SHIFT));
     switch (speed) {
         case GPIO_CFG_SPEED_LOW:
             GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
@@ -340,7 +330,7 @@ static int stm32_gpio_set_config(struct gpio_chip *gc, unsigned int offset, unsi
             break;
     }
     
-    pull = (config & GPIO_CFG_PULL_MASK) >> GPIO_CFG_PULL_SHIFT;
+    pull = (config & (GPIO_CFG_PULL_MASK << GPIO_CFG_PULL_SHIFT));
     switch (pull) {
         case GPIO_CFG_PULL_NONE:
             GPIO_InitStruct.Pull = GPIO_NOPULL;
@@ -356,25 +346,21 @@ static int stm32_gpio_set_config(struct gpio_chip *gc, unsigned int offset, unsi
             break;
     }
     
-    drive = (config & GPIO_CFG_DRIVE_MASK) >> GPIO_CFG_DRIVE_SHIFT;
-    if (drive == GPIO_CFG_DRIVE_OPEN_DRAIN) {
-        if (mode == 0) {
+    drive = (config & (GPIO_CFG_DRIVE_MASK << GPIO_CFG_DRIVE_SHIFT));
+    switch(mode) {
+        case GPIO_CFG_MODE_INPUT:
             GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-        } else if (mode == 1) {
-            GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_OD;
-        } else {
-            GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-        }
-    } else {
-        if (mode == 0) {
-            GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-        } else if (mode == 1) {
-            GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-        } else {
-            GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-        }
+            break;
+        case GPIO_CFG_MODE_OUTPUT:
+             GPIO_InitStruct.Mode = drive == GPIO_CFG_DRIVE_OPEN_DRAIN ? GPIO_MODE_OUTPUT_OD : GPIO_MODE_OUTPUT_PP; 
+            break;
+        case GPIO_CFG_MODE_AF:
+            GPIO_InitStruct.Mode = drive == GPIO_CFG_DRIVE_OPEN_DRAIN ? GPIO_MODE_AF_OD : GPIO_MODE_AF_PP;
+        default:
+            GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
+            break;
     }
-    
+
     HAL_GPIO_Init(port, &GPIO_InitStruct);
     
     return 0;

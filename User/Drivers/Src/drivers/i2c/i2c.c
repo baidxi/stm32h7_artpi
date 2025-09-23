@@ -190,6 +190,7 @@ static int do_scan(int8_t dev_id)
 found:
     for (i = 0; i < 128; i++) {
         msg.addr = i;
+        msg.flags = I2C_M_PROBE;
         if (adap->algo->master_xfer(adap, &msg, 1) == 0) {
             len += snprintf(buf + len, sizeof(buf) - len, "%02x", msg.addr);
         } else {

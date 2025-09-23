@@ -6,45 +6,41 @@
 
 static void delay_us(uint32_t us)
 {
-    HAL_Delay(us / 1000);
-    if (us % 1000) {
-        uint32_t start = HAL_GetTick();
-        uint32_t elapsed = 0;
-        
-        while (elapsed < (us % 1000)) {
-            elapsed = (HAL_GetTick() - start) * 1000;
-        }
+    extern uint32_t SystemCoreClock;
+    uint32_t count = us * (SystemCoreClock / 1000000 / 8);
+    while (count--) {
+        __NOP();
     }
 }
 
 static void scl_high(struct gpio_i2c_data *data)
 {
-    gpiod_direction_output(data->scl, 1);
+    gpiod_set_value(data->scl, 1);
 }
 
 static void scl_low(struct gpio_i2c_data *data)
 {
-     gpiod_direction_output(data->scl, 0);
+     gpiod_set_value(data->scl, 0);
 }
 
 static void sda_high(struct gpio_i2c_data *data)
 {
-     gpiod_direction_output(data->sda, 1);
+     gpiod_set_value(data->sda, 1);
 }
 
 static void sda_low(struct gpio_i2c_data *data)
 {
-     gpiod_direction_output(data->scl, 0);
+     gpiod_set_value(data->sda, 0);
 }
 
 static int sda_read(struct gpio_i2c_data *data)
 {
-    return gpiod_direction_input(data->sda);
+    return gpiod_get_value(data->sda);
 }
 
 static int scl_read(struct gpio_i2c_data *data)
 {
-    return gpiod_direction_input(data->scl);
+    return gpiod_get_value(data->scl);
 }
 
 static void i2c_start(struct gpio_i2c_data *data)
@@ -52,8 +48,10 @@ static void i2c_start(struct gpio_i2c_data *data)
     sda_high(data);
     scl_high(data);
     delay_us(data->delay_us);
+    
     sda_low(data);
     delay_us(data->delay_us);
+    
     scl_low(data);
     delay_us(data->delay_us);
 }
@@ -61,8 +59,11 @@ static void i2c_start(struct gpio_i2c_data *data)
 static void i2c_stop(struct gpio_i2c_data *data)
 {
     sda_low(data);
+    delay_us(data->delay_us);
+    
     scl_high(data);
     delay_us(data->delay_us);
+    
     sda_high(data);
     delay_us(data->delay_us);
 }
@@ -73,31 +74,26 @@ static int i2c_wait_ack(struct gpio_i2c_data *data)
     int ack;
     
     sda_high(data);
+    delay_us(data->delay_us / 2);
     
+    scl_high(data);
     while (scl_read(data) == 0 && timeout--) {
         delay_us(1);
     }
     
     if (timeout <= 0) {
+        scl_low(data);
         return -1;
     }
     
-    scl_high(data);
-    delay_us(data->delay_us);
+    delay_us(data->delay_us / 2);
     
-    while (timeout--) {
-        ack = sda_read(data);
-        if (!ack) {
-            scl_low(data);
-            delay_us(data->delay_us);
-            return 0;
-        }
-        delay_us(1);
-    }
+    ack = sda_read(data);
     
     scl_low(data);
     delay_us(data->delay_us);
-    return -1;
+    
+    return ack ? -1 : 0;
 }
 
 static void i2c_ack(struct gpio_i2c_data *data)
@@ -105,6 +101,7 @@ static void i2c_ack(struct gpio_i2c_data *data)
     int timeout = data->timeout;
     
     sda_low(data);
+    delay_us(data->delay_us / 2);
     
     while (scl_read(data) == 0 && timeout--) {
         delay_us(1);
@@ -116,9 +113,12 @@ static void i2c_ack(struct gpio_i2c_data *data)
     
     scl_high(data);
     delay_us(data->delay_us);
+    
     scl_low(data);
-    delay_us(data->delay_us);
+    delay_us(data->delay_us / 2);
+    
     sda_high(data);
+    delay_us(data->delay_us / 2);
 }
 
 static void i2c_nack(struct gpio_i2c_data *data)
@@ -126,6 +126,7 @@ static void i2c_nack(struct gpio_i2c_data *data)
     int timeout = data->timeout;
     
     sda_high(data);
+    delay_us(data->delay_us / 2);
     
     while (scl_read(data) == 0 && timeout--) {
         delay_us(1);
@@ -137,66 +138,67 @@ static void i2c_nack(struct gpio_i2c_data *data)
     
     scl_high(data);
     delay_us(data->delay_us);
+    
     scl_low(data);
-    delay_us(data->delay_us);
+    delay_us(data->delay_us / 2);
+}
+
+static int gpio_i2c_check_bus_busy(struct gpio_i2c_data *data)
+{
+    int timeout = data->timeout;
+    
+    while (timeout--) {
+        if (sda_read(data) && scl_read(data)) {
+            return 0;
+        }
+        delay_us(10);
+    }
+    
+    return -1;
 }
 
 static int i2c_write_byte(struct gpio_i2c_data *data, uint8_t byte)
 {
     int i;
-    int ack;
-    int timeout = data->timeout;
-    
+
     for (i = 7; i >= 0; i--) {
         if (byte & (1 << i)) {
             sda_high(data);
         } else {
             sda_low(data);
         }
-        delay_us(data->delay_us);
         
-        timeout = data->timeout;
-        while (scl_read(data) == 0 && timeout--) {
-            delay_us(1);
-        }
-        
-        if (timeout <= 0) {
-            return -1;
-        }
+        delay_us(data->delay_us / 2);
         
         scl_high(data);
         delay_us(data->delay_us);
+
         scl_low(data);
-        delay_us(data->delay_us);
+        delay_us(data->delay_us / 2);
     }
+
+    sda_high(data);
+    delay_us(data->delay_us / 2);
     
-    ack = i2c_wait_ack(data);
-    return ack;
+    return i2c_wait_ack(data);
 }
 
 static uint8_t i2c_read_byte(struct gpio_i2c_data *data, int ack)
 {
     int i;
     uint8_t byte = 0;
-    int timeout = data->timeout;
-    
+
     sda_high(data);
+    delay_us(data->delay_us / 2);
     
     for (i = 7; i >= 0; i--) {
-        timeout = data->timeout;
-        while (scl_read(data) == 0 && timeout--) {
-            delay_us(1);
-        }
-        
-        if (timeout <= 0) {
-            return 0;
-        }
-        
         scl_high(data);
-        delay_us(data->delay_us);
+        delay_us(data->delay_us / 2);
+        
         if (sda_read(data)) {
             byte |= (1 << i);
         }
+        
         scl_low(data);
         delay_us(data->delay_us);
     }
@@ -220,6 +222,15 @@ static int gpio_i2c_master_xfer(struct i2c_adapter *adap, struct i2c_message *ms
         return -1;
     }
     
+    if (gpio_i2c_check_bus_busy(data) < 0) {
+        i2c_stop(data);
+        delay_us(100);
+        
+        if (gpio_i2c_check_bus_busy(data) < 0) {
+            return -1;
+        }
+    }
+    
 retry:
     for (i = 0; i < num; i++) {
         struct i2c_message *msg = &msgs[i];
@@ -229,22 +240,29 @@ retry:
             addr |= 1;
         }
         
-        if (!(msg->flags & I2C_M_NOSTART))
+        if (!(msg->flags & I2C_M_NOSTART)) {
             i2c_start(data);
+            delay_us(data->delay_us);
+        }
         
         ret = i2c_write_byte(data, addr);
         if (ret < 0) {
             i2c_stop(data);
+            delay_us(data->delay_us * 10);
             if (retries--) {
                 goto retry;
             }
             return ret;
         }
+
+        if (msg->flags & I2C_M_PROBE)
+            return 0;
         
         if (msg->flags & I2C_M_RD) {
             int j;
             for (j = 0; j < msg->len; j++) {
                 msg->buf[j] = i2c_read_byte(data, j < msg->len - 1);
+                delay_us(data->delay_us / 2);
             }
         } else {
             int j;
@@ -252,16 +270,19 @@ retry:
                 ret = i2c_write_byte(data, msg->buf[j]);
                 if (ret < 0) {
                     i2c_stop(data);
+                    delay_us(data->delay_us * 10);
                     if (retries--) {
                         goto retry;
                     }
                     return ret;
                 }
+                delay_us(data->delay_us / 2);
             }
         }
     }
     
     i2c_stop(data);
+    delay_us(data->delay_us * 2);
     
     return num;
 }
@@ -278,11 +299,22 @@ static int gpio_i2c_smbus_xfer(struct i2c_adapter *adap, unsigned short addr,
         addr_byte |= 1;
     }
     
+    if (gpio_i2c_check_bus_busy(i2c_data) < 0) {
+        i2c_stop(i2c_data);
+        delay_us(100);
+        
+        if (gpio_i2c_check_bus_busy(i2c_data) < 0) {
+            return -1;
+        }
+    }
+    
     i2c_start(i2c_data);
+    delay_us(i2c_data->delay_us);
     
     ret = i2c_write_byte(i2c_data, addr_byte);
     if (ret < 0) {
         i2c_stop(i2c_data);
+        delay_us(i2c_data->delay_us * 10);
         return ret;
     }
     
@@ -290,6 +322,7 @@ static int gpio_i2c_smbus_xfer(struct i2c_adapter *adap, unsigned short addr,
         ret = i2c_write_byte(i2c_data, command);
         if (ret < 0) {
             i2c_stop(i2c_data);
+            delay_us(i2c_data->delay_us * 10);
             return ret;
         }
     }
@@ -302,13 +335,16 @@ static int gpio_i2c_smbus_xfer(struct i2c_adapter *adap, unsigned short addr,
         if (read_write) {
             uint8_t *byte = (uint8_t *)data;
             *byte = i2c_read_byte(i2c_data, 0);
+            delay_us(i2c_data->delay_us);
         } else {
             uint8_t byte = *(uint8_t *)data;
             ret = i2c_write_byte(i2c_data, byte);
             if (ret < 0) {
                 i2c_stop(i2c_data);
+                delay_us(i2c_data->delay_us * 10);
                 return ret;
             }
+            delay_us(i2c_data->delay_us);
         }
         break;
         
@@ -317,21 +353,26 @@ static int gpio_i2c_smbus_xfer(struct i2c_adapter *adap, unsigned short addr,
             uint8_t *byte = (uint8_t *)data;
 
             i2c_start(i2c_data);
+            delay_us(i2c_data->delay_us);
             
             ret = i2c_write_byte(i2c_data, addr_byte | 1);
             if (ret < 0) {
                 i2c_stop(i2c_data);
+                delay_us(i2c_data->delay_us * 10);
                 return ret;
             }
             
             *byte = i2c_read_byte(i2c_data, 0);
+            delay_us(i2c_data->delay_us);
         } else {
             uint8_t byte = *(uint8_t *)data;
             ret = i2c_write_byte(i2c_data, byte);
             if (ret < 0) {
                 i2c_stop(i2c_data);
+                delay_us(i2c_data->delay_us * 10);
                 return ret;
             }
+            delay_us(i2c_data->delay_us);
         }
         break;
         
@@ -341,16 +382,20 @@ static int gpio_i2c_smbus_xfer(struct i2c_adapter *adap, unsigned short addr,
             uint8_t low, high;
             
             i2c_start(i2c_data);
+            delay_us(i2c_data->delay_us);
             
             ret = i2c_write_byte(i2c_data, addr_byte | 1);
             if (ret < 0) {
                 i2c_stop(i2c_data);
+                delay_us(i2c_data->delay_us * 10);
                 return ret;
             }
 
             low = i2c_read_byte(i2c_data, 1);
+            delay_us(i2c_data->delay_us / 2);
             
             high = i2c_read_byte(i2c_data, 0);
+            delay_us(i2c_data->delay_us);
             
             *word = (high << 8) | low;
         } else {
@@ -361,14 +406,18 @@ static int gpio_i2c_smbus_xfer(struct i2c_adapter *adap, unsigned short addr,
             ret = i2c_write_byte(i2c_data, low);
             if (ret < 0) {
                 i2c_stop(i2c_data);
+                delay_us(i2c_data->delay_us * 10);
                 return ret;
             }
+            delay_us(i2c_data->delay_us / 2);
             
             ret = i2c_write_byte(i2c_data, high);
             if (ret < 0) {
                 i2c_stop(i2c_data);
+                delay_us(i2c_data->delay_us * 10);
                 return ret;
             }
+            delay_us(i2c_data->delay_us);
         }
         break;
         
@@ -379,18 +428,23 @@ static int gpio_i2c_smbus_xfer(struct i2c_adapter *adap, unsigned short addr,
             int i;
             
             i2c_start(i2c_data);
+            delay_us(i2c_data->delay_us);
             
             ret = i2c_write_byte(i2c_data, addr_byte | 1);
             if (ret < 0) {
                 i2c_stop(i2c_data);
+                delay_us(i2c_data->delay_us * 10);
                 return ret;
             }
             
             length = i2c_read_byte(i2c_data, 1);
+            delay_us(i2c_data->delay_us / 2);
             
             for (i = 0; i < length; i++) {
                 block[i] = i2c_read_byte(i2c_data, i < length - 1);
+                delay_us(i2c_data->delay_us / 2);
             }
+            delay_us(i2c_data->delay_us);
         } else {
             uint8_t *block = (uint8_t *)data;
             uint8_t length = block[0];
@@ -399,25 +453,32 @@ static int gpio_i2c_smbus_xfer(struct i2c_adapter *adap, unsigned short addr,
             ret = i2c_write_byte(i2c_data, length);
             if (ret < 0) {
                 i2c_stop(i2c_data);
+                delay_us(i2c_data->delay_us * 10);
                 return ret;
             }
+            delay_us(i2c_data->delay_us / 2);
             
             for (i = 1; i <= length; i++) {
                 ret = i2c_write_byte(i2c_data, block[i]);
                 if (ret < 0) {
                     i2c_stop(i2c_data);
+                    delay_us(i2c_data->delay_us * 10);
                     return ret;
                 }
+                delay_us(i2c_data->delay_us / 2); 
             }
+            delay_us(i2c_data->delay_us);
         }
         break;
         
     default:
         i2c_stop(i2c_data);
+        delay_us(i2c_data->delay_us * 2);
         return -1;
     }
     
     i2c_stop(i2c_data);
+    delay_us(i2c_data->delay_us * 2);
     
     return 0;
 }
@@ -430,10 +491,9 @@ static unsigned int gpio_i2c_functionality(struct i2c_adapter *adap)
 static void gpio_i2c_gpio_init(struct gpio_i2c_data *data)
 {
     struct gpio_desc *desc;
-    unsigned long flags = GPIO_CFG_DRIVE_OPEN_DRAIN |  GPIO_CFG_PULL_UP | GPIO_CFG_SPEED_HIGH;
+    unsigned long flags = GPIO_CFG_DRIVE_OPEN_DRAIN | GPIO_CFG_SPEED_HIGH | GPIO_CFG_MODE_OUTPUT;
 
     desc = gpiod_request_with_label(data->scl_pin_name, flags, "i2c-scl");
-
     if (!desc)
         return;
 
@@ -448,12 +508,19 @@ static void gpio_i2c_gpio_init(struct gpio_i2c_data *data)
     scl_high(data);
     sda_high(data);
     
+    delay_us(100);
+    
     if (data->delay_us == 0) {
         data->delay_us = 5;
     }
 
     if (data->timeout == 0) {
         data->timeout = 1000;
+    }
+    
+    if (gpio_i2c_check_bus_busy(data) < 0) {
+        i2c_stop(data);
+        delay_us(100);
     }
 }
 

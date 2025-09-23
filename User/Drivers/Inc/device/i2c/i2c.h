@@ -40,7 +40,7 @@ struct i2c_message {
     uint16_t addr;
     uint8_t *buf;
     uint8_t len;
-    uint8_t flags;
+    uint32_t flags;
 };
 
 struct i2c_algorithm {

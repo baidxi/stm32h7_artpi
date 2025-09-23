@@ -30,5 +30,5 @@
         "ranges": "c",
         "span": "c"
     },
-    "cortex-debug.variableUseNaturalFormat": true
+    "cortex-debug.variableUseNaturalFormat": false
 }
