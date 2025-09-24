@@ -84,19 +84,17 @@ static struct stm32_uart stm32h7_uart3 = {
             .init = stm32h7_usart3_init,
         },
         .port_num = 3,
-        .mode = TTY_MODE_STREAM,
     }
 };
 
 static struct stm32_uart stm32h7_uart4 = {
-.tty = {
-    .dev = {
-        .init_name = "stm32-uart",
-        .name = "ttyS4",
-        .init = stm32h7_uart4_init,
-    },
-    .parity = 4,
-    .mode = TTY_MODE_CONSOLE
+  .tty = {
+      .dev = {
+          .init_name = "stm32-uart",
+          .name = "ttyS4",
+          .init = stm32h7_uart4_init,
+      },
+      .port_num = 4,
     }
 };
 

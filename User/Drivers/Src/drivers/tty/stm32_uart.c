@@ -28,14 +28,14 @@ void HAL_UART_RxHalfCpltCallback(UART_HandleTypeDef *huart)
     struct stm32_uart *uart = tty_device_lookup_by_handle(huart);
     struct ring *r = &uart->ringbuf;
 
-    if (uart->tty.mode == TTY_MODE_CONSOLE) {
-        uart->buf[r->head & r->mask] = uart->chart;
-        ring_enqueue(r, 1);
-        if (!ring_is_full(r))
-            HAL_UART_Receive_DMA(huart, &uart->chart, 1);
-    } else {
-        ring_enqueue(r, uart->buf_len -1);
-    }
+    // if (uart->tty.mode == TTY_MODE_CONSOLE) {
+    //     uart->buf[r->head & r->mask] = uart->chart;
+    //     ring_enqueue(r, 1);
+    //     if (!ring_is_full(r))
+    //         HAL_UART_Receive_DMA(huart, &uart->chart, 1);
+    // } else {
+    //     ring_enqueue(r, uart->buf_len -1);
+    // }
 }
 
 const osThreadAttr_t uartTask_attrbutes = {
@@ -72,20 +72,20 @@ static int stm32_uart_open(struct device *dev)
         return -EBUSY;
     }
 
-    uart->is_open = true;
-    r->head = r->tail = 0;
-    r->mask = uart->buf_len -1;
+    // uart->is_open = true;
+    // r->head = r->tail = 0;
+    // r->mask = uart->buf_len -1;
 
-    memset(uart->buf, 0, uart->buf_len);
+    // memset(uart->buf, 0, uart->buf_len);
 
-    if (uart->tty.use_dma) {
-        if (uart->tty.mode == TTY_MODE_CONSOLE)
-            ret = HAL_UART_Receive_DMA(handle, &uart->chart, 1);
-        else
-            ret = HAL_UART_Receive_DMA(handle, uart->buf, uart->buf_len - 1);
-    } else {
-        uart->tid = osThreadNew(uart_task, uart, &uartTask_attrbutes);
-    }
+    // if (uart->tty.use_dma) {
+    //     if (uart->tty.mode == TTY_MODE_CONSOLE)
+    //         ret = HAL_UART_Receive_DMA(handle, &uart->chart, 1);
+    //     else
+    //         ret = HAL_UART_Receive_DMA(handle, uart->buf, uart->buf_len - 1);
+    // } else {
+    //     uart->tid = osThreadNew(uart_task, uart, &uartTask_attrbutes);
+    // }
 
     return ret;
 }
@@ -126,21 +126,21 @@ static size_t stm32_uart_read(struct device *dev, void *buf, size_t count)
     if (ring_is_empty(r))
         return 0;
 
-    if (uart->tty.mode == TTY_MODE_CONSOLE)
-        dma_start = ring_is_full(r);
+    // if (uart->tty.mode == TTY_MODE_CONSOLE)
+    //     dma_start = ring_is_full(r);
 
-    for (i = 0; i < count; i++) {
-        out[i] = uart->buf[(r->tail & r->mask)];
-        ring_dequeue(r, 1);
-        if (ring_is_empty(r))
-            break;
-    }
+    // for (i = 0; i < count; i++) {
+    //     out[i] = uart->buf[(r->tail & r->mask)];
+    //     ring_dequeue(r, 1);
+    //     if (ring_is_empty(r))
+    //         break;
+    // }
 
-    if (uart->tty.use_dma) {
-        if (uart->tty.mode == TTY_MODE_CONSOLE && dma_start) {
-            HAL_UART_Receive_DMA(handle, &uart->chart, 1);
-        }
-    }
+    // if (uart->tty.use_dma) {
+    //     if (uart->tty.mode == TTY_MODE_CONSOLE && dma_start) {
+    //         HAL_UART_Receive_DMA(handle, &uart->chart, 1);
+    //     }
+    // }
 
     return i;
 }
