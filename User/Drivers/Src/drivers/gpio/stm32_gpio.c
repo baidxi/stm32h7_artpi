@@ -1,5 +1,4 @@
 #include <device/gpio/stm32_gpio.h>
-
 #include <gpio.h>
 #include <errno.h>
 

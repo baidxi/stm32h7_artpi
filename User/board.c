@@ -18,10 +18,7 @@
 void StartShellTask (void *argument)
 {
   shell_init ("ttyS4", "stm32h7>");
-  for (;;)
-    {
-      shell_run ();
-    }
+  shell_run ();
 }
 
 osThreadId_t shellTaskHandle;
@@ -119,7 +116,8 @@ static struct mpu6050_device mpu6050 = {
     .adap = &stm32_gpio_i2c,
     .addr = 0x68,
     .name = "mpu6050"
-  }
+  },
+  .intr_gpio_name = "PA8"
 };
 
 static struct gpio_device stm32_gpioa_device = {

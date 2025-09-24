@@ -2,7 +2,7 @@
 
 #include "../list.h"
 
-#define DEVICE_NAME_MAX 32
+#define DEVICE_NAME_MAX 16
 
 struct device_driver;
 struct bus_type;

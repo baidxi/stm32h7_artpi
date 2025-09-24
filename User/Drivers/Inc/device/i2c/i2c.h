@@ -24,12 +24,14 @@
 
 struct i2c_adapter;
 struct i2c_driver;
+struct gpio_desc;
 
 extern struct bus_type i2c_bus_type;
 struct i2c_client {
     struct device dev;
     struct i2c_driver *drv;
     struct i2c_adapter *adap;
+    struct gpio_desc *intr_gpio;
     struct list_head list;
     char name[32];
     uint16_t addr;
