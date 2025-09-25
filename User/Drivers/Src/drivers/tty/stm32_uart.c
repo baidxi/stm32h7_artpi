@@ -26,8 +26,8 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
 
     if (uart->dma.last_counter != Size)
     {
-        ring_enqueue(r, 1);
-        uart->dma.last_counter = Size;
+        ring_enqueue(r, rx_cnt);
+        uart->dma.last_counter = Size == uart->handle.RxXferSize ? 0 : uart->dma.last_counter + rx_cnt;
     };
 }
 
