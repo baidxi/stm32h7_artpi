@@ -3,6 +3,7 @@
 
 #include <init.h>
 #include <bus.h>
+#include <irq.h>
 #include <ring.h>
 
 #include <FreeRTOS.h>
@@ -17,54 +18,33 @@
 
 #define to_stm32_uart(d)  container_of(d, struct stm32_uart, tty)
 
-void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
+void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
 {
-    struct stm32_uart *tty = (struct stm32_uart *)tty_device_lookup_by_handle(huart);
-    tty->tx_cplt = true;
-}
-
-void HAL_UART_RxHalfCpltCallback(UART_HandleTypeDef *huart)
-{
-    struct stm32_uart *uart = tty_device_lookup_by_handle(huart);
+    struct stm32_uart *uart = container_of(huart, struct stm32_uart, handle);
     struct ring *r = &uart->ringbuf;
+    uint16_t rx_cnt = Size - uart->dma.last_counter;
 
-    if (uart->tty.mode == TTY_MODE_CONSOLE) {
-        uart->buf[r->head & r->mask] = uart->chart;
+    if (uart->dma.last_counter != Size)
+    {
         ring_enqueue(r, 1);
-        if (!ring_is_full(r))
-            HAL_UART_Receive_DMA(huart, &uart->chart, 1);
-    } else {
-        ring_enqueue(r, uart->buf_len -1);
-    }
+        uart->dma.last_counter = Size;
+    };
 }
 
-const osThreadAttr_t uartTask_attrbutes = {
-  .name = "uartTask",
-  .stack_size = 128 * 4,
-  .priority = (osPriority_t)osPriorityNormal1,
-};
-
-static void uart_task(void *args)
+static int stm32_uart_irq_handler(unsigned int irq, void *dev)
 {
-    struct stm32_uart *uart = args;
-    UART_HandleTypeDef *handle = uart->tty.dev.private_data;
-    struct ring *r = &uart->ringbuf;
-    int ret;
+    extern void HAL_UART_IRQHandler(UART_HandleTypeDef *huart);
 
-    while(uart->is_open) {
-        if (ring_size(r)) {
-            ret = HAL_UART_Receive(handle, &uart->buf[(r->head & r->mask)], 1 , 10);
-            if (ret == HAL_OK) {
-                    ring_enqueue(r, 1);
-            }
-        }
-    }
+    struct stm32_uart *uart = dev;
+
+    HAL_UART_IRQHandler(&uart->handle);
+
+    return 0;
 }
 
 static int stm32_uart_open(struct device *dev)
 {
     struct stm32_uart *uart = to_stm32_uart(dev);
-    UART_HandleTypeDef *handle = uart->tty.dev.private_data;
     struct ring *r = &uart->ringbuf;
     int ret = 0;
 
@@ -73,19 +53,25 @@ static int stm32_uart_open(struct device *dev)
     }
 
     uart->is_open = true;
-    r->head = r->tail = 0;
-    r->mask = uart->buf_len -1;
 
+    uart->buf = pvPortMalloc(uart->buf_len);
+    if (!uart->buf)
+        return -ENOMEM;
+    
     memset(uart->buf, 0, uart->buf_len);
 
-    if (uart->tty.use_dma) {
-        if (uart->tty.mode == TTY_MODE_CONSOLE)
-            ret = HAL_UART_Receive_DMA(handle, &uart->chart, 1);
-        else
-            ret = HAL_UART_Receive_DMA(handle, uart->buf, uart->buf_len - 1);
-    } else {
-        uart->tid = osThreadNew(uart_task, uart, &uartTask_attrbutes);
+    r->head = r->tail = 0;
+    r->mask = uart->buf_len - 1;
+    uart->dma.next_channel = 0;
+
+    ret = request_irq(dev->irq, stm32_uart_irq_handler, 0, dev->name, uart);
+
+    if (ret) {
+        uart->is_open = false;
+        return ret;
     }
+
+    ret = HAL_UARTEx_ReceiveToIdle_DMA(&uart->handle, uart->buf, uart->buf_len);
 
     return ret;
 }
@@ -101,9 +87,9 @@ static int stm32_uart_close(struct device *dev)
 
     uart->is_open = false;
 
-    if (uart->tty.use_dma) {
-        HAL_UART_Abort(handle);
-        HAL_UART_AbortReceive(handle);
+    if (handle->hdmarx)
+    {
+        HAL_DMA_Abort(handle->hdmarx);
     }
 
     return 0;
@@ -117,58 +103,67 @@ static int stm32_uart_ioctl(struct device *dev, unsigned int cmd, unsigned long 
 static size_t stm32_uart_read(struct device *dev, void *buf, size_t count)
 {
     struct stm32_uart *uart =(struct stm32_uart *) to_tty_device(dev);
-    UART_HandleTypeDef *handle = uart->tty.dev.private_data;
     uint8_t *out = buf;
     struct ring *r = &uart->ringbuf;
     int i = 0;
-    bool dma_start = false;
 
     if (ring_is_empty(r))
         return 0;
 
-    if (uart->tty.mode == TTY_MODE_CONSOLE)
-        dma_start = ring_is_full(r);
-
-    for (i = 0; i < count; i++) {
-        out[i] = uart->buf[(r->tail & r->mask)];
-        ring_dequeue(r, 1);
-        if (ring_is_empty(r))
-            break;
-    }
-
-    if (uart->tty.use_dma) {
-        if (uart->tty.mode == TTY_MODE_CONSOLE && dma_start) {
-            HAL_UART_Receive_DMA(handle, &uart->chart, 1);
-        }
-    }
+    do {
+        out[i++] = uart->buf[ring_dequeue(r, 1) & r->mask];
+    }while(!ring_is_empty(r) && i < count);
 
     return i;
+}
+
+static void stm32_uart_tx_complete(void *param)
+{
+    struct stm32_uart *uart = param;
+    uart->tty.complete->complete = true;
+}
+
+void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
+{
+    struct stm32_uart *uart = container_of(huart, struct stm32_uart, handle);
+    if (uart->tty.complete)
+    {
+        uart->tty.complete->callback(uart);
+    }
 }
 
 static size_t stm32_uart_write(struct device *dev, const void *buf, size_t len)
 {
     struct tty_device *tty = to_tty_device(dev);
     struct stm32_uart *uart = (struct stm32_uart *)tty;
-    UART_HandleTypeDef *handle = tty->dev.private_data;
+    UART_HandleTypeDef *handle = &uart->handle;
+    struct complete complete = {0};
+
     int ret;
 
-    if (uart->tty.use_dma) {
-        uart->tx_cplt = false;
+    if (handle->hdmatx) {
+        complete.callback = stm32_uart_tx_complete;
+        complete.complete = false;
+        complete.param = uart;
+        tty->complete = &complete;
 
         ret = HAL_UART_Transmit_DMA(handle, buf, len);
-
-        if (ret == HAL_OK) {
-            while(!uart->tx_cplt) {
-                taskYIELD();
-                ;
-            }
+        if (ret != HAL_OK) {
+            return ret;
         }
+        while(!complete.complete)
+        {
+            osDelay(1);
+        }
+        tty->complete = NULL;
+        return len;
     } else {
         ret = HAL_UART_Transmit(handle, buf, len, 10);
-        if (ret == HAL_OK) {
-            ret = len;
-        }
     }
+
+
+    if (ret != HAL_OK)
+        return ret;
 
     return len;
 }
@@ -189,14 +184,13 @@ static int stm32_uart_probe(struct tty_device *tty)
 
     uart->is_open = false;
 
-    uart->buf_len = sizeof(uart->buf);
+    uart->buf_len = STM32_UART_BUFSZ;
 
     return 0;
 }
 
 static int stm32_uart_remove(struct tty_device *tty)
 {
-    // struct stm32_uart *uart = (struct stm32_uart *)tty;
     tty->ops = NULL;
     return 0;
 }

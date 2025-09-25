@@ -7,6 +7,5 @@ int early_init(void)
 {
     bus_type_init();
     device_init();
-    driver_init();
     return 0;
 }
