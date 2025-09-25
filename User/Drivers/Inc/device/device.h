@@ -15,6 +15,7 @@ struct device {
     struct bus_type *bus;
     void *private_data;
     void (*init)(struct device *);
+    int irq;
 };
 
 static inline void dev_set_drvdata(struct device *dev, void *data)

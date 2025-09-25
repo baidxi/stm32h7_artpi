@@ -2,6 +2,7 @@
 
 #include "../device.h"
 #include "../driver.h"
+#include "../complete.h"
 
 #include <stdint.h>
 #include <stddef.h>
@@ -25,7 +26,8 @@ struct tty_device {
     uint8_t flow_control;
     const struct tty_operations *ops;
     struct list_head list;
-    bool use_dma;
+    int mode;
+    struct complete *complete;
 };
 
 struct tty_driver {

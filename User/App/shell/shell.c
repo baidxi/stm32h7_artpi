@@ -119,7 +119,7 @@ int shell_printf(const char *fmt, ...)
 
 static int shell_getchar(void)
 {
-    char c;
+    char c = 0;
     ssize_t ret;
 
     if (!ctx->tty) {

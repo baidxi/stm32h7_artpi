@@ -88,7 +88,8 @@ return 0;
   */
 void MX_FREERTOS_Init(void) {
   /* USER CODE BEGIN Init */
-
+  extern void driver_init(void);
+  driver_init();
   /* USER CODE END Init */
 
   /* USER CODE BEGIN RTOS_MUTEX */

@@ -11,6 +11,7 @@
 #include <device/i2c/mpu6050.h>
 #include <device/gpio/stm32_gpio.h>
 #include <device/spi/spi.h>
+#include <irq/stm32h7_irq.h>
 
 #include <gpio.h>
 #include <spi.h>
@@ -31,12 +32,13 @@ const osThreadAttr_t shellTask_attrbutes = {
 void stm32h7_usart3_init (struct device *dev)
 {
   struct tty_device *tty = to_tty_device (dev);
-  MX_USART3_UART_Init ();
-  tty->baudrate = huart3.Init.BaudRate;
-  tty->data_bits = huart3.Init.WordLength;
-  tty->parity = huart3.Init.Parity;
-  tty->stop_bits = huart3.Init.StopBits;
-  dev->private_data = &huart3;
+  struct stm32_uart *uart = container_of(tty, struct stm32_uart, tty);
+  MX_USART3_UART_Init(&uart->handle);
+  // tty->baudrate = huart3.Init.BaudRate;
+  // tty->data_bits = huart3.Init.WordLength;
+  // tty->parity = huart3.Init.Parity;
+  // tty->stop_bits = huart3.Init.StopBits;
+  // dev->private_data = &huart3;
 
   tty_device_register (tty);
 }
@@ -44,12 +46,13 @@ void stm32h7_usart3_init (struct device *dev)
 void stm32h7_uart4_init (struct device *dev)
 {
   struct tty_device *tty = to_tty_device (dev);
-  MX_UART4_Init ();
-  tty->baudrate = huart4.Init.BaudRate;
-  tty->data_bits = huart4.Init.WordLength;
-  tty->parity = huart4.Init.Parity;
-  tty->stop_bits = huart4.Init.StopBits;
-  dev->private_data = &huart4;
+  struct stm32_uart *uart = container_of(tty, struct stm32_uart, tty);
+  MX_UART4_Init(&uart->handle);
+  // tty->baudrate = huart4.Init.BaudRate;
+  // tty->data_bits = huart4.Init.WordLength;
+  // tty->parity = huart4.Init.Parity;
+  // tty->stop_bits = huart4.Init.StopBits;
+  // dev->private_data = &huart4;
   tty_device_register (tty);
 }
 
@@ -82,19 +85,21 @@ static struct stm32_uart stm32h7_uart3 = {
             .init_name = "stm32-uart",
             .name = "ttyS3",
             .init = stm32h7_usart3_init,
+            .irq = USART3_IRQn,
         },
         .port_num = 3,
     }
 };
 
 static struct stm32_uart stm32h7_uart4 = {
-  .tty = {
-      .dev = {
-          .init_name = "stm32-uart",
-          .name = "ttyS4",
-          .init = stm32h7_uart4_init,
-      },
-      .port_num = 4,
+.tty = {
+    .dev = {
+        .init_name = "stm32-uart",
+        .name = "ttyS4",
+        .init = stm32h7_uart4_init,
+        .irq = UART4_IRQn
+    },
+    .parity = 4,
     }
 };
 
@@ -222,6 +227,23 @@ static struct spi_master stm32h7_spi1 = {
   .bus_num = 1,
 };
 
+static void stm32h7_irq_init(struct device *dev)
+{
+  struct irq_chip *chip = to_irq_chip(dev);
+  register_irq_chip(chip);
+}
+
+static struct stm32h7_irq_chip irq_chip = {
+    .chip = {
+        .dev = {
+            .init_name = "stm32h7-irq-chip",
+            .init = stm32h7_irq_init,
+        },
+        .nr_irq = 150,
+    }
+};
+
+register_device(stm32h7_irq_chip, irq_chip.chip.dev);
 register_device(gpioa, stm32_gpioa_device.dev);
 register_device(gpiob, stm32_gpiob_device.dev);
 register_device(gpioc, stm32_gpioc_device.dev);
