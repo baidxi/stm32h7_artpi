@@ -5,7 +5,7 @@
 
 #include <usart.h>
 
-#define STM32_UART_BUFSZ    16
+#define STM32_UART_BUFSZ    128
 struct stm32_uart {
     struct tty_device tty;
     UART_HandleTypeDef handle;
@@ -17,6 +17,5 @@ struct stm32_uart {
     bool tx_cplt;
     struct {
         uint16_t last_counter;
-        uint32_t next_channel;
     }dma;
 };

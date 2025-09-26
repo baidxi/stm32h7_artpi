@@ -63,7 +63,6 @@ static int stm32_uart_open(struct device *dev)
 
     r->head = r->tail = 0;
     r->mask = uart->buf_len - 1;
-    uart->dma.next_channel = 0;
 
     ret = request_irq(dev->irq, stm32_uart_irq_handler, 0, dev->name, uart);
 
